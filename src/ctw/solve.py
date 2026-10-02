@@ -1,9 +1,10 @@
 """The best rank-r ΔW for one layer's keys and targets under the generic-text metric.
 
-    J(ΔW) = ‖ΔW K − V‖²_F + λ tr(ΔW Σ ΔWᵀ),      λ = ridge · d_in
+    J(ΔW) = ‖ΔW K − V‖²_F + λ tr(ΔW Σ ΔWᵀ),      λ = ridge · E[zᵀ Σ⁻¹ z]
 
 K (d_in x n) holds keys, V (d_out x n) holds the output change each key must produce, and Σ is the
-key second moment on generic text (ctw.stats). The minimizer is
+key second moment on generic text (ctw.stats). A generic key k has kᵀ Σ⁻¹ k ≈ E[zᵀ Σ⁻¹ z], so with
+this λ it keeps a fraction 1/(1 + ridge) of its target. The minimizer is
 
     ΔW* = V Kᵀ (K Kᵀ + λ Σ)⁻¹ = V (G + λI)⁻¹ Kᵀ Σ⁻¹,      G = Kᵀ Σ⁻¹ K.
 
@@ -28,7 +29,7 @@ def covariance_ridge(keys: torch.Tensor, values: torch.Tensor, stats: KeyStats, 
     """Return A (d_out x r), B (r x d_in), and fit diagnostics."""
     k, v = keys.double().cpu(), values.double().cpu()
     d_in, n = k.shape
-    lam = ridge * d_in
+    lam = ridge * stats.whitened_dim()
     ck = stats.inverse(k)                                  # Σ⁻¹K, d_in x n
     gram = k.T @ ck
     g, e = torch.linalg.eigh((gram + gram.T) / 2)
@@ -49,12 +50,13 @@ def covariance_ridge(keys: torch.Tensor, values: torch.Tensor, stats: KeyStats, 
         "fit": 1.0 - residual / total if total > 0 else 0.0,
         "kept_fraction": float(s[:r].square().sum() / s.square().sum().clamp_min(1e-300)),
         "mean_whitened_norm": float(g.mean()),
+        "lambda": lam,
     }
 
 
 def objective(a: torch.Tensor, b: torch.Tensor, keys: torch.Tensor, values: torch.Tensor,
               moment: torch.Tensor, ridge: float) -> float:
-    """J(AB) with an explicit Σ, for checking the solver."""
+    """J(AB) with an explicit, unshrunk Σ (so E[zᵀ Σ⁻¹ z] = d_in), for checking the solver."""
     delta = a.double() @ b.double()
     lam = ridge * keys.shape[0]
     fit = (delta @ keys.double() - values.double()).square().sum()

@@ -41,7 +41,7 @@ This is MEMIT's update (Meng et al., 2023). Three facts follow from it.
 
 1. **A question reads only through its whitened overlap with the written keys.** `ΔW* z = V (G + λI)⁻¹ (Kᵀ Σ⁻¹ z)`. If `kᵢᵀ Σ⁻¹ z = 0` for every written key, the readout is zero, however well the write fits its own keys. Keys taken from fixed generic probes miss question keys this way. So do keys taken from document positions, which is why next-token prediction on the text stores facts that questions cannot extract (Allen-Zhu & Li, 2023; Berglund et al., 2023).
 2. **Written keys do not interfere.** As `λ → 0` with independent keys, `ΔW* K = V` exactly. The Hebbian write, the sum of `aᵢ kᵢᵀ / ‖kᵢ‖²` over keys, returns `aⱼ` plus the sum of `aᵢ kᵢᵀkⱼ / ‖kᵢ‖²` over `i ≠ j`. That crosstalk grows with key correlation (Hu et al., 2024).
-3. **λ has a scale.** A typical key has `kᵀ Σ⁻¹ k ≈ d_in`. With `λ = κ · d_in`, it keeps `1/(1+κ)` of its target. Without `Σ⁻¹`, real keys crowd into a few directions: the effective dimension `(tr Σ)² / tr(Σ²)` is far below `d_in`.
+3. **λ has a scale.** A generic key has `E[zᵀ Σ⁻¹ z]` equal to the sum of `λⱼ / λ̃ⱼ`, where `λⱼ` are the eigenvalues of `Σ` and `λ̃ⱼ = (1−s) λⱼ + s · mean(λ)` the shrunk ones the solver inverts. That is `d_in` without shrinkage and far less with it. With `λ = κ · E[zᵀ Σ⁻¹ z]`, a generic key keeps `1/(1+κ)` of its target. Without `Σ⁻¹`, real keys crowd into a few directions: the effective dimension `(tr Σ)² / tr(Σ²)` is far below `d_in`.
 
 ### The best rank
 

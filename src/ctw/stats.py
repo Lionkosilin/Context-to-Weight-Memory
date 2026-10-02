@@ -39,6 +39,11 @@ class KeyStats:
     def dim(self) -> int:
         return int(self.eigvecs.shape[0])
 
+    def whitened_dim(self) -> float:
+        """E[zᵀ Σ⁻¹ z] over generic keys: d without shrinkage, less with it."""
+        raw = self.eigvals.double().clamp_min(0.0)
+        return float((raw / self.spectrum).sum())
+
     def effective_dim(self) -> float:
         """(tr Σ)² / tr(Σ²): how many directions the keys really spread over."""
         s = self.spectrum

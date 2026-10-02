@@ -29,7 +29,7 @@ from .base import Context, Writer, register
 @dataclass
 class CCDParams:
     rank: int = 32            # rank of ΔW per layer
-    ridge: float = 0.1        # λ = ridge · d_in; a typical generic key keeps 1/(1+ridge) of its target
+    ridge: float = 0.1        # a typical generic key keeps 1/(1+ridge) of its target
     steps: int = 30           # Adam steps on δ; 0 keeps δ = r, the teacher's residual
     lr: float = 0.05          # step size in units of ‖h_t‖/√d per coordinate
     anchor: float = 0.5       # weight on staying near the teacher's residual

@@ -82,6 +82,11 @@ def test_key_stats_inverse_energy_and_shrinkage():
     assert torch.allclose(iso.spectrum, torch.full_like(iso.spectrum, float(torch.trace(moment)) / 24))
     assert iso.effective_dim() == pytest.approx(24.0)
     assert 1.0 < stats.effective_dim() < 24.0
+    assert stats.whitened_dim() == pytest.approx(24.0, rel=1e-6)
+    shrunk = KeyStats(stats.eigvecs, stats.eigvals, 400, 0.3)
+    metric = (shrunk.eigvecs.double() * shrunk.spectrum) @ shrunk.eigvecs.double().T
+    assert shrunk.whitened_dim() == pytest.approx(float(torch.trace(torch.linalg.solve(metric, moment))), rel=1e-4)
+    assert shrunk.whitened_dim() < 24.0
 
 
 def test_factor_controls_keep_one_factor_and_the_norm():
