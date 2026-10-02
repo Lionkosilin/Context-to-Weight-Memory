@@ -1,16 +1,16 @@
-# Deep context distillation on your own documents. Replace task.params.path with your bank.
+# Deep context distillation over self-queries on free text: the gradient solver of the objective CCD
+# solves in closed form. Replace task.params.path with your own bank.
 name: qwen3-0.6b-dcd
 model:
   id: Qwen/Qwen3-0.6B
 memory:
-  layers: last:4
+  layers: [0.56, 0.67, 0.78, 0.89]
 writer:
   name: dcd
-  params: {kind: lowrank, rank: 16, lr: 1.0e-3, passes: 8, chunk: 256, recent: 1024}
+  params: {rank: 16, lr: 1.0e-3, passes: 4, questions: 16}
 task:
   name: qa_json
   params: {path: examples/lighthouse.json}
 eval:
-  arms: [off, context, write, random]
   max_new_tokens: 16
   export_txt: true

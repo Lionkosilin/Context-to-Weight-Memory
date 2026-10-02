@@ -102,25 +102,37 @@ class MemoryState:
                   for i, g in sorted(grouped.items())}
         return cls(deltas, meta)
 
-    def random_like(self, seed: int) -> MemoryState:
-        """Random state with the same layers, shapes, rank, and per-layer Frobenius norm."""
+    @property
+    def lowrank(self) -> bool:
+        return all(isinstance(d, LowRankDelta) for d in self.deltas.values())
+
+    def random_like(self, seed: int, keep: str | None = None) -> MemoryState:
+        """Random state with the same layers, shapes, rank, and per-layer Frobenius norm.
+
+        keep="a" keeps every output factor A and draws B: the right values behind random keys.
+        keep="b" keeps every input factor B and draws A: random values behind the right keys.
+        """
+        if keep not in (None, "a", "b"):
+            raise ValueError(f"keep must be None, 'a', or 'b', not {keep!r}")
+        if keep and not self.lowrank:
+            raise ValueError("keeping a factor needs low-rank deltas")
         gen = torch.Generator(device="cpu").manual_seed(seed)
         out: dict[int, Delta] = {}
         for i, d in self.deltas.items():
             target = d.frobenius()
             if isinstance(d, LowRankDelta):
-                a = torch.randn(d.a.shape, generator=gen)
-                b = torch.randn(d.b.shape, generator=gen)
-                r = LowRankDelta(a, b)
-                norm = r.frobenius()
+                a = d.a.detach().float().cpu() if keep == "a" else torch.randn(d.a.shape, generator=gen)
+                b = d.b.detach().float().cpu() if keep == "b" else torch.randn(d.b.shape, generator=gen)
+                norm = LowRankDelta(a, b).frobenius()
                 if norm > 0:
-                    a.mul_(target / norm)
+                    (b if keep == "a" else a).mul_(target / norm)
                 out[i] = LowRankDelta(a.to(d.a), b.to(d.b))
             else:
                 w = torch.randn(d.w.shape, generator=gen)
                 w.mul_(target / max(float(w.norm()), 1e-12))
                 out[i] = DenseDelta(w.to(d.w))
-        return MemoryState(out, {**self.meta, "control": "random_same_shape_norm", "seed": seed})
+        control = {None: "random", "a": "random_keys", "b": "random_values"}[keep]
+        return MemoryState(out, {**self.meta, "control": control, "seed": seed})
 
 
 def as_tokens(x: torch.Tensor) -> torch.Tensor:

@@ -34,12 +34,22 @@ DEFAULTS: dict = {
     },
     "writer": {"name": "acwc", "params": {}, "save": None, "load": None},
     "task": {"name": "synthetic_kv", "params": {}},
+    "stats": {                     # key second moment Σ = E[z zᵀ] per memory layer (ctw.stats)
+        "source": "sample",        # sample: text the model generates | text: the files below
+        "text": [],
+        "tokens": 65536,
+        "chunk": 512,
+        "batch": 8,                # sequences sampled at once
+        "shrink": 0.1,             # 1.0 replaces Σ with an isotropic matrix of the same trace
+        "cache": "outputs/stats/{model}",
+    },
     "eval": {
-        "arms": ["off", "context", "write", "wrong", "random"],
+        "arms": ["off", "context", "write", "wrong", "random", "random_keys", "random_values"],
         "scales": [1.0],
         "max_new_tokens": 8,
         "export_txt": False,
         "heldout_text": None,      # path; reports perplexity under off and write
+        "selectivity": False,      # log10 ‖ΔW z_q‖² / E‖ΔW z‖² per question; needs key statistics
     },
 }
 

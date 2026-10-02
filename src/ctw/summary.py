@@ -77,10 +77,13 @@ def summarize(reports: list[dict]) -> dict:
                 "seed_rate_sd": _sd(rates),
                 "wrong_contains": sum(x["wrong_contains"] for x in rows),
                 "mean_gold_logp": sum(x["mean_gold_logp"] * x["n"] for x in rows) / n,
+                **({"mean_log10_selectivity": sum(x["mean_log10_selectivity"] * x["n"] for x in rows) / n}
+                   if all("mean_log10_selectivity" in x for x in rows) else {}),
             }
         out["splits"][split] = {
             "arms": arms,
             "paired": [p for p in (_paired(reports, split, "write", other)
-                                   for other in ("off", "wrong", "random")) if p],
+                                   for other in ("off", "wrong", "random", "random_keys",
+                                                 "random_values")) if p],
         }
     return out

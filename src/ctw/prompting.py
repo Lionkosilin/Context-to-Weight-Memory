@@ -25,23 +25,29 @@ class PromptFormat:
             device: torch.device | str = "cpu") -> torch.Tensor:
         user = f"{self.context_label}\n{context}\n\n" if context is not None else ""
         user += f"{self.question_label} {question}"
+        return self.render(tok, user, self.system, device)
+
+    def render(self, tok, user: str, system: str | None,
+               device: torch.device | str = "cpu") -> torch.Tensor:
+        """One user turn, ready for the reply, with an optional system message."""
         if self.uses_chat(tok):
             messages = [{"role": "user", "content": user}]
-            if self.system:
-                messages.insert(0, {"role": "system", "content": self.system})
+            if system:
+                messages.insert(0, {"role": "system", "content": system})
             enc = tok.apply_chat_template(
                 messages, tokenize=True, add_generation_prompt=True,
                 enable_thinking=self.enable_thinking, return_tensors="pt",
             )
             ids = enc["input_ids"] if hasattr(enc, "keys") else enc
         else:
-            text = (f"{self.system}\n\n" if self.system else "") + f"{user}\n{self.answer_label}"
+            text = (f"{system}\n\n" if system else "") + f"{user}\n{self.answer_label}"
             ids = tok(text, return_tensors="pt").input_ids
         return ids.to(device)
 
 
 def encode(tok, text: str, device: torch.device | str = "cpu") -> torch.Tensor:
-    return tok(text, add_special_tokens=False, return_tensors="pt").input_ids.to(device)
+    """A standalone text as the model reads it, with the tokenizer's start token if it has one."""
+    return tok(text, return_tensors="pt").input_ids.to(device)
 
 
 def answer_ids(tok, answer: str, chat: bool) -> list[int]:

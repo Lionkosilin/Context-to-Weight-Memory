@@ -12,6 +12,7 @@ import torch
 from ..adapter import ModelAdapter
 from ..memory import MemoryHooks, MemoryState
 from ..prompting import PromptFormat
+from ..stats import StatsCache
 from ..tasks import Episode
 
 WRITERS: dict[str, type[Writer]] = {}
@@ -42,6 +43,7 @@ class Context:
     layers: list[int]
     prompt: PromptFormat
     seed: int = 0
+    stats: StatsCache | None = None   # key second moments on generic text, per layer
 
     @property
     def device(self) -> torch.device:

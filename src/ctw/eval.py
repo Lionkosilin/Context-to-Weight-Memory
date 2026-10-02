@@ -1,11 +1,17 @@
 """Write every document of a split, then question it under the control arms.
 
 Arms
-  off      no ΔW, no document              what the backbone already knows
-  context  no ΔW, document in the prompt   whether the question is answerable
-  write    the document's ΔW               main arm
-  wrong    the decoy document's ΔW         does the answer follow the weight's document
-  random   random ΔW, same shape and norm  does any perturbation get lucky
+  off            no ΔW, no document                 what the backbone already knows
+  context        no ΔW, document in the prompt      whether the question is answerable
+  write          the document's ΔW                  main arm
+  wrong          the decoy document's ΔW            does the answer follow the weight's document
+  random         random ΔW, same shape and norm     does any perturbation get lucky
+  random_keys    the document's A, random B         do the values work without their keys
+  random_values  the document's B, random A         do the keys work without their values
+
+The last two need low-rank states. Selectivity is log10 ‖ΔW z_q‖² / E‖ΔW z‖² at the question's last
+position, averaged over memory layers: how much more the question activates the memory than
+generic text does. A ΔW read through keys the question never produces sits near 0.
 """
 
 from __future__ import annotations
@@ -19,10 +25,12 @@ import torch.nn.functional as F
 
 from .memory import MemoryState
 from .prompting import answer_ids
+from .queries import greedy
 from .tasks import Episode, Question
 from .writers import Context, Writer
 
-ARMS = ("off", "context", "write", "wrong", "random")
+ARMS = ("off", "context", "write", "wrong", "random", "random_keys", "random_values")
+STATE_ARMS = ("write", "wrong", "random", "random_keys", "random_values")
 
 
 def normalize(text: str) -> str:
@@ -30,12 +38,8 @@ def normalize(text: str) -> str:
     return " ".join(text.split())
 
 
-@torch.no_grad()
 def generate(ctx: Context, prompt: torch.Tensor, max_new_tokens: int) -> str:
-    pad = ctx.tok.pad_token_id if ctx.tok.pad_token_id is not None else ctx.tok.eos_token_id
-    out = ctx.model.generate(prompt, attention_mask=torch.ones_like(prompt),
-                             max_new_tokens=max_new_tokens, do_sample=False, pad_token_id=pad)
-    return ctx.tok.decode(out[0, prompt.shape[1]:], skip_special_tokens=True).strip()
+    return ctx.tok.decode(greedy(ctx, prompt, max_new_tokens)[0], skip_special_tokens=True).strip()
 
 
 @torch.no_grad()
@@ -82,12 +86,30 @@ def write_split(ctx: Context, writer: Writer, episodes: list[Episode], arms, see
         states["wrong"] = [persist(e.decoy) if e.decoy is not None else None for e in episodes]
     if "random" in arms:
         states["random"] = [s.random_like(seed + k) for k, s in enumerate(states["write"])]
+    for arm, keep in (("random_keys", "a"), ("random_values", "b")):
+        if arm in arms:
+            states[arm] = [s.random_like(seed + k, keep=keep) if s.lowrank else None
+                           for k, s in enumerate(states["write"])]
     return states
+
+
+@torch.no_grad()
+def log10_selectivity(ctx: Context, state: MemoryState, prompt: torch.Tensor, energy: dict) -> float:
+    """Mean over layers of log10 ‖ΔW z_q‖² / tr(ΔW Σ ΔWᵀ), z_q the last prompt position's key."""
+    ctx.model(input_ids=prompt, use_cache=False)
+    out = []
+    for i, d in state.deltas.items():
+        z = ctx.hooks.last_input[i]
+        hit = float(d.apply(z).square().sum())
+        out.append(math.log10(max(hit, 1e-30) / max(energy[i], 1e-30)))
+    return sum(out) / len(out)
 
 
 def evaluate_split(ctx: Context, episodes: list[Episode], states: dict, arms, scales,
                    max_new_tokens: int, export_dir: Path | None = None,
-                   heldout: torch.Tensor | None = None) -> dict:
+                   heldout: torch.Tensor | None = None, selectivity: bool = False) -> dict:
+    if selectivity:
+        ctx.stats.ensure(ctx.layers)
     results = {}
     plan = [(arm, 1.0) for arm in arms if arm != "write"]
     plan += [("write", s) for s in scales] if "write" in arms else []
@@ -95,9 +117,11 @@ def evaluate_split(ctx: Context, episodes: list[Episode], states: dict, arms, sc
         key = arm if arm != "write" or len(scales) == 1 else f"write@{scale:g}"
         rows, ppl = [], []
         for k, e in enumerate(episodes):
-            state = states[arm][k] if arm in ("write", "wrong", "random") else None
-            if arm in ("wrong", "random", "write") and state is None:
+            state = states[arm][k] if arm in STATE_ARMS else None
+            if arm in STATE_ARMS and state is None:
                 continue
+            energy = ({i: ctx.stats.get(i).energy(d) for i, d in state.deltas.items()}
+                      if selectivity and state is not None else None)
             ctx.hooks.set(state, scale=scale)
             if heldout is not None and arm in ("off", "write"):
                 ppl.append(perplexity(ctx, heldout))
@@ -105,8 +129,11 @@ def evaluate_split(ctx: Context, episodes: list[Episode], states: dict, arms, sc
                 context = e.document if arm == "context" else None
                 prompt = ctx.prompt.ids(ctx.tok, q.text, context=context, device=ctx.device)
                 reply = generate(ctx, prompt, max_new_tokens)
-                rows.append({"episode": e.id, "question": q.id, "gold": q.gold, "reply": reply,
-                             "gold_logp": gold_logprob(ctx, prompt, q.gold), **_score(reply, q)})
+                row = {"episode": e.id, "question": q.id, "gold": q.gold, "reply": reply,
+                       "gold_logp": gold_logprob(ctx, prompt, q.gold), **_score(reply, q)}
+                if energy is not None:
+                    row["log10_selectivity"] = log10_selectivity(ctx, state, prompt, energy)
+                rows.append(row)
                 if export_dir is not None:
                     _export(export_dir / key / f"{q.id}.txt",
                             ctx.tok.decode(prompt[0], skip_special_tokens=False), reply, q)
@@ -121,6 +148,8 @@ def evaluate_split(ctx: Context, episodes: list[Episode], states: dict, arms, sc
             "wrong_contains": sum(r["wrong_contains"] for r in rows),
             "mean_gold_logp": sum(r["gold_logp"] for r in rows) / n,
             **({"mean_heldout_ppl": sum(ppl) / len(ppl)} if ppl else {}),
+            **({"mean_log10_selectivity": sum(r["log10_selectivity"] for r in rows) / n}
+               if "log10_selectivity" in rows[0] else {}),
             "rows": rows,
         }
     if "off" in results:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "context-to-weight"
-version = "0.2.0"
+version = "0.3.0"
 description = "Write a document into a low-rank weight on a frozen LLM, then answer questions about it with the document removed."
 readme = "README.md"
 license = "MIT"

@@ -6,7 +6,7 @@ from .prompting import PromptFormat
 from .tasks import Episode, Question, Task, register_task
 from .writers import Context, Writer, build_writer, register
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Context", "DenseDelta", "Episode", "LowRankDelta", "MemoryHooks", "MemoryState",

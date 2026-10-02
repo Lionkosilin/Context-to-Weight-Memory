@@ -73,7 +73,8 @@ UNSEEN_VALUES = ("wolf", "bear", "horse", "fox", "owl", "mouse", "cat", "dog")
 
 
 def _single_token(tok, word: str) -> bool:
-    return len(tok(word, add_special_tokens=False).input_ids) == 1
+    """One token as a chat reply ("word") or as a plain-text continuation (" word")."""
+    return any(len(tok(w, add_special_tokens=False).input_ids) == 1 for w in (word, " " + word))
 
 
 def _kv_episode(seed: int, relations, pool) -> tuple[dict[str, str], list[str]]:

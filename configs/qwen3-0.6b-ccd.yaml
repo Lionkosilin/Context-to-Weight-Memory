@@ -1,0 +1,15 @@
+# CCD on free text: replace task.params.path with your own bank. Untuned.
+name: qwen3-0.6b-ccd
+model:
+  id: Qwen/Qwen3-0.6B
+memory:
+  layers: [0.56, 0.67, 0.78, 0.89]
+writer:
+  name: ccd
+task:
+  name: qa_json
+  params: {path: examples/lighthouse.json}
+eval:
+  max_new_tokens: 16
+  selectivity: true
+  export_txt: true

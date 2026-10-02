@@ -8,9 +8,8 @@ from pathlib import Path
 import pytest
 import torch
 
-from ctw import tasks
+from ctw import queries, tasks
 from ctw.config import DEFAULTS
-from ctw.writers.analytic import UNIVERSAL_PROBES
 
 ROOT = Path(__file__).resolve().parents[1]
 CHAT = ("{% for m in messages %}<{{ m['role'] }}> {{ m['content'] }} </turn> {% endfor %}"
@@ -19,7 +18,8 @@ CHAT = ("{% for m in messages %}<{{ m['role'] }}> {{ m['content'] }} </turn> {% 
 
 def _corpus() -> str:
     parts = [CHAT, DEFAULTS["prompt"]["system"], "Answer with only the assigned word, without explanation.",
-             "Reference record: Question: Answer: </s> <unk> <pad>", *UNIVERSAL_PROBES]
+             "Reference record: Question: Answer: </s> <unk> <pad>",
+             queries.QUESTION_SYSTEM, queries.QUESTION_REQUEST, queries.CLOZE]
     for rel in tasks.RELATIONS:
         parts.append(tasks.STATEMENT.format(relation=rel, value=""))
         parts += [q.format(relation=rel) for q in (*tasks.TRAIN_QUESTIONS, tasks.EVAL_QUESTION)]
@@ -96,5 +96,6 @@ def config_for(model_dir: str, tmp_path, **over) -> dict:
 
     base = {"model": {"id": model_dir, "device": "cpu", "dtype": "float32"},
             "output": str(tmp_path / "{name}" / "seed{seed}.json"),
+            "stats": {"tokens": 512, "chunk": 64, "batch": 4, "cache": str(tmp_path / "stats" / "{model}")},
             "eval": {"max_new_tokens": 2}}
     return merge(merge(DEFAULTS, base), over)

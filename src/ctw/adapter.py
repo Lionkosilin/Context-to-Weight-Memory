@@ -101,9 +101,19 @@ class ModelAdapter:
         """(d_in, d_out) of the output projection: (d_ff, d_model) for a standard MLP."""
         return linear_dims(self.out_proj(layer))
 
+    def weight(self, layer: int) -> torch.Tensor:
+        """The output projection's weight in (d_out x d_in) orientation."""
+        module = self.out_proj(layer)
+        w = module.weight
+        return w if isinstance(module, nn.Linear) else w.T
+
     @property
     def device(self) -> torch.device:
         return next(self.model.parameters()).device
+
+    def layer_output(self, output) -> torch.Tensor:
+        """Hidden states from a decoder layer's forward output (a tensor or a tuple)."""
+        return output[0] if isinstance(output, tuple) else output
 
     def output_embeddings(self) -> torch.Tensor:
         """Vocabulary x d_model matrix that maps hidden states to logits."""

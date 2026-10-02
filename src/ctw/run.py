@@ -15,6 +15,7 @@ from .device import DTYPES, load_model
 from .eval import evaluate_split, write_split
 from .memory import MemoryHooks
 from .prompting import PromptFormat, encode
+from .stats import StatsCache
 from .tasks import build_task
 from .writers import Context, build_writer
 
@@ -31,8 +32,10 @@ def setup(cfg: dict):
 def context_for(model, tok, cfg: dict) -> Context:
     adapter = ModelAdapter.from_model(model, cfg["model"]["layers_path"], cfg["model"]["out_proj"])
     layers = adapter.resolve_layers(cfg["memory"]["layers"])
-    return Context(model=model, tok=tok, adapter=adapter, hooks=MemoryHooks(adapter, layers),
-                   layers=layers, prompt=PromptFormat(**cfg["prompt"]), seed=cfg["seed"])
+    hooks = MemoryHooks(adapter, layers)
+    return Context(model=model, tok=tok, adapter=adapter, hooks=hooks, layers=layers,
+                   prompt=PromptFormat(**cfg["prompt"]), seed=cfg["seed"],
+                   stats=StatsCache(model, tok, adapter, hooks, cfg["stats"], cfg["model"]["id"]))
 
 
 def output_path(cfg: dict) -> Path:
@@ -70,7 +73,8 @@ def run(cfg: dict, ctx: Context | None = None) -> dict:
         state_params = states["write"][0].nbytes(1)
         evaluations[split] = evaluate_split(
             ctx, episodes, states, e["arms"], e["scales"], e["max_new_tokens"],
-            export_dir=export_root / split if export_root else None, heldout=heldout)
+            export_dir=export_root / split if export_root else None, heldout=heldout,
+            selectivity=e["selectivity"])
         line = "  ".join(f"{a}={r['contains']}/{r['n']}" for a, r in evaluations[split].items())
         print(f"{split}: {line}", flush=True)
 

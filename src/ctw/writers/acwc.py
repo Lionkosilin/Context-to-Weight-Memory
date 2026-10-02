@@ -71,10 +71,12 @@ class Compiler(nn.Module):
 
 
 def split_sentences(tok, document: str, device) -> tuple[torch.Tensor, list[tuple[int, int]]]:
+    """Document ids after the tokenizer's start token, and each sentence's span."""
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", document.strip()) if s.strip()]
     if not sentences:
         raise ValueError("document contains no sentence")
-    parts, spans, cursor = [], [], 0
+    start = tok("", return_tensors="pt").input_ids
+    parts, spans, cursor = [start], [], start.shape[1]
     for k, s in enumerate(sentences):
         ids = tok((" " if k else "") + s, add_special_tokens=False, return_tensors="pt").input_ids
         parts.append(ids)
@@ -131,11 +133,12 @@ class ACWCWriter(Writer):
             if self.p.value_source == "hidden":
                 values.append(got["h"][0, end - 2])
             else:
+                # The value row is the token the reader emits as the answer.
                 piece = ctx.tok.decode([int(ids[0, end - 2])]).strip()
-                alone = ctx.tok(piece, add_special_tokens=False).input_ids
-                if len(alone) != 1:
-                    raise ValueError(f"sentence value {piece!r} is not a standalone single token")
-                values.append(emb[alone[0]].detach().float().cpu())
+                emitted = answer_ids(ctx.tok, piece, ctx.chat)
+                if len(emitted) != 1:
+                    raise ValueError(f"sentence value {piece!r} is not a single answer token")
+                values.append(emb[emitted[0]].detach().float().cpu())
         return Source(torch.stack(keys), torch.stack(values))
 
     def _state(self, ctx: Context, a, b) -> MemoryState:
@@ -209,12 +212,13 @@ class ACWCWriter(Writer):
 
     @torch.no_grad()
     def _dev_score(self, ctx: Context, dev: list[Episode], sources: list[Source]) -> dict:
+        """Dev documents asked with the training phrasings; evaluation phrasings stay unseen."""
         layer = self._layer(ctx)
         lp = correct = routed = count = 0
         for e, src in zip(dev, sources):
             a, b, keys = self.compiler.factors(src, ctx.device)
             ctx.hooks.set(self._state(ctx, a, b))
-            for q in e.questions:
+            for q in e.train_questions:
                 logits = ctx.model(input_ids=ctx.prompt.ids(ctx.tok, q.text, device=ctx.device),
                                    use_cache=False).logits[:, -1].float()
                 target = answer_ids(ctx.tok, q.gold, ctx.chat)[0]

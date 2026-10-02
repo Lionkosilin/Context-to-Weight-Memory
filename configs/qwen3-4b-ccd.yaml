@@ -1,0 +1,17 @@
+# CCD on the synthetic key–value task, the same documents and questions as qwen3-4b-acwc.
+# No fit: each document is written in closed form from its own self-queries. Untuned.
+name: qwen3-4b-ccd
+model:
+  id: Qwen/Qwen3-4B
+  dtype: bfloat16
+prompt:
+  system: Answer with only the assigned word, without explanation.
+memory:
+  layers: [0.56, 0.67, 0.78, 0.89]
+writer:
+  name: ccd
+task:
+  name: synthetic_kv
+eval:
+  max_new_tokens: 4
+  selectivity: true
