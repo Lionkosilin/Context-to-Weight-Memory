@@ -1,0 +1,17 @@
+{
+  "episodes": [
+    {
+      "id": "lighthouse",
+      "document": "The keeper of the Corran Point lighthouse was a retired surveyor named Ilse Marrow. She arrived on the island in the spring of 1974 with two crates of books and a grey cat called Pilot. The lamp she tended burned paraffin until 1981, when the harbour board replaced it with an electric beam visible for nineteen nautical miles. Every evening she wrote the wind speed and the number of passing ships in a green ledger. The supply boat came on Thursdays and brought flour, lamp wicks, and letters from her brother in Aberdeen. In the winter of 1979 a storm cut the island off for twenty-three days. Marrow kept the light burning by rationing the last barrel of paraffin to four hours a night. She left the island in 1988, and the ledger is now kept at the Stromness museum.",
+      "decoy_document": "The keeper of the Corran Point lighthouse was a retired surveyor named Ilse Marrow. She arrived on the island in the spring of 1969 with two crates of books and a grey cat called Rudder. The lamp she tended burned paraffin until 1983, when the harbour board replaced it with an electric beam visible for fourteen nautical miles. Every evening she wrote the wind speed and the number of passing ships in a red ledger. The supply boat came on Mondays and brought flour, lamp wicks, and letters from her brother in Dundee. In the winter of 1979 a storm cut the island off for thirty-one days. Marrow kept the light burning by rationing the last barrel of paraffin to four hours a night. She left the island in 1988, and the ledger is now kept at the Kirkwall museum.",
+      "questions": [
+        {"id": "q1", "question": "What was the name of the keeper's cat?", "gold": "Pilot", "wrong_gold": "Rudder", "split": "check"},
+        {"id": "q2", "question": "In which year did the keeper arrive on the island?", "gold": "1974", "wrong_gold": "1969", "split": "check"},
+        {"id": "q3", "question": "On which day of the week did the supply boat come?", "gold": "Thursday", "aliases": ["Thursdays"], "wrong_gold": "Monday", "split": "check"},
+        {"id": "q4", "question": "Where did the keeper's brother live?", "gold": "Aberdeen", "wrong_gold": "Dundee", "split": "blind"},
+        {"id": "q5", "question": "How many days was the island cut off by the 1979 storm?", "gold": "twenty-three", "aliases": ["23"], "wrong_gold": "thirty-one", "split": "blind"},
+        {"id": "q6", "question": "Which museum keeps the keeper's ledger?", "gold": "Stromness", "aliases": ["Stromness museum"], "wrong_gold": "Kirkwall", "split": "blind"}
+      ]
+    }
+  ]
+}

@@ -10,9 +10,6 @@ __pycache__/
 .env
 .hf_token
 
-models/*
-!models/.gitkeep
-
 outputs/
 logs/
 wandb/

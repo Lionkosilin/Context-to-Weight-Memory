@@ -1,0 +1,16 @@
+# ACWC on Qwen3-4B, the setting behind the reported 79/96 and 66/96 (seeds 7, 11, 19).
+name: qwen3-4b-acwc
+model:
+  id: Qwen/Qwen3-4B
+  dtype: bfloat16
+prompt:
+  system: Answer with only the assigned word, without explanation.
+memory:
+  layers: [32]
+writer:
+  name: acwc
+  save: outputs/{name}/compiler-seed{seed}.pt
+task:
+  name: synthetic_kv
+eval:
+  max_new_tokens: 1

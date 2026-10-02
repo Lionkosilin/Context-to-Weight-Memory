@@ -54,10 +54,10 @@ Free text, multi-token answers, and stacked documents are still untouched.
 
 ## Design
 
-- **The state is weights.** The backbone is frozen. Each document gets one `ΔW` on `down_proj`, zeroed after use, saved as BF16, and loadable across processes.
+- **The state is weights.** The backbone is frozen. Each document gets one `ΔW` on the MLP output projection (`down_proj` or its counterpart in each architecture), applied through a hook without touching the original weights, zeroed after use, saved as BF16, and loadable across processes.
 - **Write and read stay apart.** The writer sees only the raw string. Questions appear after `ΔW` is saved. At read time, the prompt holds only the question.
-- **Equal bytes.** 8 `W_down` layers hold 8 × 2560 × 9728 parameters. One token of KV holds 36 × 2 × 8 × 128. That equals 2,702 KV tokens (`src/rlm/budget.py`).
-- **Controls.** Five arms: no write, write, document in prompt, random weights of the same rank and norm, and wrong-document weights. A set of unrelated general questions checks for backbone damage. Every exchange is exported as `.txt`.
+- **Equal bytes.** 8 `W_down` layers hold 8 × 2560 × 9728 parameters. One token of KV holds 36 × 2 × 8 × 128. That equals 2,702 KV tokens. `ctw inspect` computes this for any model.
+- **Controls.** Five arms: no write, write, document in prompt, random weights of the same rank and norm, and wrong-document weights. Perplexity on unrelated text checks for backbone damage. Every exchange can be exported as `.txt`.
 
 ## Algorithms
 
@@ -69,7 +69,7 @@ Only the selected `down_proj` layers train, one step per 512 tokens. The objecti
 \mathcal{L}_{\text{DCD}} = \mathrm{KL}\big(p_{t}\,\|\,p_{s}\big) + \lambda\cdot\frac{1}{L}\sum_{l}\frac{\lVert h^{s}_{l}-h^{t}_{l}\rVert_1}{\lVert h^{t}_{l}\rVert_1}
 ```
 
-`src/rlm/writer.py` · `src/rlm/methods.py` · `scripts/write.py` · `scripts/ask.py`
+`src/ctw/writers/gradient.py` · `configs/qwen3-0.6b-dcd.yaml`
 
 ### Analytic residual writing
 
@@ -81,7 +81,7 @@ Fixed probes `P`. The teacher reads `[C; P]`, and the student reads `P` alone. T
 
 It fits above 99% inside the probe subspace, yet questions cannot read it. The written keys and the reading keys live in different places.
 
-`scripts/analytic_residual.py`
+`src/ctw/writers/analytic.py` · `configs/qwen3-4b-analytic.yaml`
 
 ### ACWC: read–write aligned compiler
 
@@ -104,7 +104,54 @@ Outer training uses synthetic documents only and learns `s`, `U, V` (rank 64), a
 
 Setting: `Qwen3-4B`, layer 32, `m = 4`, `τ = 20`, `λ_route = 0.2`. The compiler has 1,254,913 parameters, and each document takes 98,304 bytes.
 
-`scripts/acwc.py` · `scripts/acwc_summary.py`
+`src/ctw/writers/acwc.py` · `configs/qwen3-4b-acwc.yaml`
+
+## Usage
+
+```bash
+pip install -e .            # Python 3.10+; GPU, Apple MPS, or CPU
+
+ctw inspect --model Qwen/Qwen3-0.6B --layers 0.89 --rank 4   # layers, projection path, state bytes, KV-token equivalent
+ctw run configs/qwen3-0.6b-acwc.yaml                          # fit → write → five-arm evaluation
+ctw run configs/qwen3-4b-acwc.yaml --set seed=11              # the main result uses seeds 7, 11, 19
+ctw summarize outputs/qwen3-4b-acwc/seed*.json --out outputs/qwen3-4b-acwc/summary.json
+```
+
+One document:
+
+```bash
+ctw write configs/qwen3-0.6b-acwc.yaml --document doc.txt --out doc.safetensors \
+    --set writer.load=outputs/qwen3-0.6b-acwc/compiler-seed7.pt
+ctw ask configs/qwen3-0.6b-acwc.yaml --state doc.safetensors --question "What was the archive key?"
+```
+
+**Other models, other devices.** Every config value can be overridden with `--set`.
+
+| Key | Meaning |
+|---|---|
+| `model.id` | Hugging Face name or local path |
+| `model.device` / `model.dtype` | `auto`, `cuda`, `mps`, `cpu` / `auto`, `bfloat16`, `float16`, `float32` |
+| `model.layers_path` / `model.out_proj` | set by hand when detection fails, e.g. `model.layers`, `mlp.down_proj` |
+| `memory.layers` | `32`, `-4`, `0.89` (depth fraction), `last:8`, `[8, 16, 24]` |
+| `writer.params.*` | writer hyperparameters; `ctw list` shows defaults |
+| `task.params.seen_values` | with another tokenizer, key–value values must be single tokens |
+
+Tested layouts: Qwen3, Llama, GPT-2, GPT-NeoX, OPT.
+
+**Add an algorithm.** Create a file in `src/ctw/writers/`:
+
+```python
+from ctw.writers import Writer, register
+
+@register("mine")
+class MyWriter(Writer):
+    def write(self, ctx, document):   # receives only the raw text
+        ...                           # returns a MemoryState
+```
+
+A file kept elsewhere loads with `--set imports=[my_writer.py]`. `--set writer.name=mine` compares it under the same tasks, controls, and summaries. Writers that learn across documents also implement `fit()`. New tasks use `@register_task`; your own documents and questions can go straight into JSON, as in `examples/lighthouse.json`.
+
+`pytest` runs every component on tiny randomly initialized models, with no weights to download.
 
 ## Ramblings
 

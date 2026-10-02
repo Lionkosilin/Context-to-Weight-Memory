@@ -1,0 +1,15 @@
+# ACWC on Qwen3-0.6B. Same depth ratio as layer 32 of 36; gain and layer are untuned here.
+name: qwen3-0.6b-acwc
+model:
+  id: Qwen/Qwen3-0.6B
+prompt:
+  system: Answer with only the assigned word, without explanation.
+memory:
+  layers: [0.89]
+writer:
+  name: acwc
+  save: outputs/{name}/compiler-seed{seed}.pt
+task:
+  name: synthetic_kv
+eval:
+  max_new_tokens: 1

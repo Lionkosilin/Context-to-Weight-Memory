@@ -54,10 +54,10 @@ y = W_{\text{down}}\, z = \sum_j z_j\, w_j
 
 ## 设计
 
-- **状态是权重。** 骨干冻结。每篇文档一份 `down_proj` 上的 `ΔW`，用完清零，以 BF16 落盘，可跨进程加载。
+- **状态是权重。** 骨干冻结。每篇文档一份挂在 MLP 输出投影（`down_proj` 及其在各架构中的对应层）上的 `ΔW`，经 hook 生效，不改动原权重，用完清零，以 BF16 落盘，可跨进程加载。
 - **写读隔离。** 写入器只见原始字符串。题目在 `ΔW` 落盘后才出现。读出时只有问题。
-- **等字节对比。** 8 层 `W_down` 共 8 × 2560 × 9728 个参数，每 token 的 KV 是 36 × 2 × 8 × 128，折合 2,702 个 KV token（`src/rlm/budget.py`）。
-- **对照。** 不加载、加载、原文入提示、同秩同范数随机、错误文档，共五条臂。另有一组无关常识题，检查骨干是否受损。问答原样导出为 `.txt`。
+- **等字节对比。** 8 层 `W_down` 共 8 × 2560 × 9728 个参数，每 token 的 KV 是 36 × 2 × 8 × 128，折合 2,702 个 KV token。任意模型可用 `ctw inspect` 换算。
+- **对照。** 不加载、加载、原文入提示、同秩同范数随机、错误文档，共五条臂。另测与文档无关文本的困惑度，检查骨干是否受损。问答可原样导出为 `.txt`。
 
 ## 算法
 
@@ -69,7 +69,7 @@ y = W_{\text{down}}\, z = \sum_j z_j\, w_j
 \mathcal{L}_{\text{DCD}} = \mathrm{KL}\big(p_{t}\,\|\,p_{s}\big) + \lambda\cdot\frac{1}{L}\sum_{l}\frac{\lVert h^{s}_{l}-h^{t}_{l}\rVert_1}{\lVert h^{t}_{l}\rVert_1}
 ```
 
-`src/rlm/writer.py` · `src/rlm/methods.py` · `scripts/write.py` · `scripts/ask.py`
+`src/ctw/writers/gradient.py` · `configs/qwen3-0.6b-dcd.yaml`
 
 ### 解析残差写入
 
@@ -81,7 +81,7 @@ y = W_{\text{down}}\, z = \sum_j z_j\, w_j
 
 在探针子空间内拟合超过 99%，问题却读不出答案。写入的键和读取的键不在一处。
 
-`scripts/analytic_residual.py`
+`src/ctw/writers/analytic.py` · `configs/qwen3-4b-analytic.yaml`
 
 ### ACWC：读写对齐编译器
 
@@ -104,7 +104,54 @@ a_i = g\,e_i,\qquad
 
 配置：`Qwen3-4B`，第 32 层，`m = 4`，`τ = 20`，`λ_route = 0.2`。编译器共 1,254,913 个参数，每篇文档 98,304 字节。
 
-`scripts/acwc.py` · `scripts/acwc_summary.py`
+`src/ctw/writers/acwc.py` · `configs/qwen3-4b-acwc.yaml`
+
+## 用法
+
+```bash
+pip install -e .            # Python 3.10+；GPU、Apple MPS、CPU 均可
+
+ctw inspect --model Qwen/Qwen3-0.6B --layers 0.89 --rank 4   # 层数、投影路径、状态字节、等价 KV token
+ctw run configs/qwen3-0.6b-acwc.yaml                          # 拟合 → 写入 → 五臂评测
+ctw run configs/qwen3-4b-acwc.yaml --set seed=11              # 主结果用 7、11、19 三个种子
+ctw summarize outputs/qwen3-4b-acwc/seed*.json --out outputs/qwen3-4b-acwc/summary.json
+```
+
+单篇文档：
+
+```bash
+ctw write configs/qwen3-0.6b-acwc.yaml --document doc.txt --out doc.safetensors \
+    --set writer.load=outputs/qwen3-0.6b-acwc/compiler-seed7.pt
+ctw ask configs/qwen3-0.6b-acwc.yaml --state doc.safetensors --question "What was the archive key?"
+```
+
+**换模型、换设备。** 所有配置项都能用 `--set` 覆盖。
+
+| 配置 | 作用 |
+|---|---|
+| `model.id` | Hugging Face 名称或本地路径 |
+| `model.device` / `model.dtype` | `auto`、`cuda`、`mps`、`cpu` / `auto`、`bfloat16`、`float16`、`float32` |
+| `model.layers_path` / `model.out_proj` | 自动识别失败时手动指定，如 `model.layers`、`mlp.down_proj` |
+| `memory.layers` | `32`、`-4`、`0.89`（深度比例）、`last:8`、`[8, 16, 24]` |
+| `writer.params.*` | 写入算法的超参，`ctw list` 列出默认值 |
+| `task.params.seen_values` | 换分词器后，键值任务的值须为单 token |
+
+已测试：Qwen3、Llama、GPT-2、GPT-NeoX、OPT 的层结构。
+
+**加一个算法。** 在 `src/ctw/writers/` 新建文件：
+
+```python
+from ctw.writers import Writer, register
+
+@register("mine")
+class MyWriter(Writer):
+    def write(self, ctx, document):   # 只拿到原文
+        ...                           # 返回 MemoryState
+```
+
+放在别处的文件用 `--set imports=[my_writer.py]` 加载。`--set writer.name=mine` 即可在同一套任务、对照和汇总下比较。跨文档学习的算法再实现 `fit()`。新任务用 `@register_task`；自己的文档和题目可直接写成 JSON，格式见 `examples/lighthouse.json`。
+
+`pytest` 在随机初始化的小模型上跑完全部组件，不需要下载权重。
 
 ## 碎碎念
 
