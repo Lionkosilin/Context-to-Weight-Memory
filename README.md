@@ -155,17 +155,7 @@ A file kept elsewhere loads with `--set imports=[my_writer.py]`. `--set writer.n
 
 ## Ramblings
 
-Melbourne has slipped again into the long rains between spring and summer. On days without class, I sometimes wonder: if AI one day really can do everyone's work, what will we have left by then?
-
-I do not know. Some nights, the question keeps me awake.
-
-Luckily, it cannot replace my life. A tool is a tool because it stays a means and a path, never the end or the result.
-
-There are still many corners of the earth I have not explored, and unlike the internet, they are not filled with generated content. We can still be creators, or even just explorers.
-
-Maybe I am wrong. Maybe tomorrow everything changes.
-
-Good thing we still hold the whole of life: the power to experience it.
+Melbourne has slipped again into the long rains between spring and summer.
 
 ## License
 
